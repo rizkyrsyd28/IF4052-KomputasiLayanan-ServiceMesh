@@ -1,0 +1,25 @@
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceIntentions
+metadata:
+  name: ticket-a
+  namespace: default
+# Allow traffic from ticket-a to service-consumer
+spec:
+  destination:
+    name: ticket-a
+  sources:
+    - name: service-consumer
+      action: allow
+---
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceIntentions
+metadata:
+  name: ticket-b
+  namespace: default
+# Allow traffic from ticket-b to service-consumer
+spec:
+  destination:
+    name: ticket-b
+  sources:
+    - name: service-consumer
+      action: allow

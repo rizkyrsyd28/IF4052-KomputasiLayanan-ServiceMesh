@@ -1,0 +1,56 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ticket-a
+  namespace: default
+spec:
+  selector:
+    app: ticket-a
+  ports:
+    - name: http
+      protocol: TCP
+      port: 4000
+      targetPort: 4000
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ticket-a
+  namespace: default
+automountServiceAccountToken: true
+---
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceDefaults
+metadata:
+  name: ticket-a
+  namespace: default
+spec:
+  protocol: "http"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ticket-a
+  namespace: default
+  labels:
+    app: ticket-a
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ticket-a
+  template:
+    metadata:
+      labels:
+        app: ticket-a
+      annotations:
+        consul.hashicorp.com/connect-inject: "true"
+    spec:
+      serviceAccountName: ticket-a
+      containers:
+        - name: ticket-a
+          image: docker.io/darktiger2280/service-tiket-a:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 4000

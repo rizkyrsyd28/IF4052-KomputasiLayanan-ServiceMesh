@@ -1,0 +1,128 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: service-consumer
+  namespace: default
+spec:
+  type: ClusterIP
+  selector:
+    app: service-consumer
+  ports:
+    - name: http
+      protocol: TCP
+      port: 4002
+      targetPort: 4002  
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: service-consumer
+  namespace: default
+automountServiceAccountToken: true
+---
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceDefaults
+metadata:
+  name: service-consumer
+  namespace: default
+spec:
+  protocol: "http"
+  envoyExtensions:
+  - name: "builtin/lua"
+    arguments:
+      proxyType: "connect-proxy"
+      listener: "outbound"
+      script: |-
+        function envoy_on_request(request_handle)
+          
+          local path = request_handle:headers():get(":path")
+          request_handle:logInfo("Path " .. path)
+
+          local destination_service = request_handle:headers():get(":authority")
+          request_handle:logInfo("Destination Service: " .. tostring(destination_service))
+
+
+          local _path, query = string.match(request_handle:headers():get(":path"), "([^?]*)%??(.*)")
+
+          -- Log path dan query string
+          request_handle:logInfo("Path: " .. (path or ""))
+          request_handle:logInfo("Query string: " .. (query or ""))
+
+          local query_params = {}
+          for key, value in string.gmatch(query, "([^&=?]+)=([^&=?]+)") do
+              query_params[key] = value
+              request_handle:logInfo("Query parameter: " .. key .. " = " .. value)
+          end
+
+          if destination_service == "localhost:4000" then
+            
+            if path and string.match(path, "^/api/v1/ticket") then
+              
+              -- Menambahkan header jika path cocok
+              
+              local new_path = "/api/v1/ticket/" ..  query_params["destination"]
+
+              request_handle:headers():replace(":path", new_path)
+              
+              request_handle:logInfo("New Path: " .. (new_path or ""))
+            end
+
+          elseif destination_service == "localhost:4001" then
+
+            if path and string.match(path, "^/api/v1/ticket") then
+              
+              local new_path = "/api/v-1/ticket"
+              request_handle:headers():replace(":path", new_path)
+              request_handle:headers():replace(":method", "POST")
+              request_handle:headers():replace("content-type", "application/json")
+
+              request_handle:headers():add("x-destination", query_params["destination"])
+            end
+          end 
+        end
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: service-consumer
+  namespace: default
+  # labels:
+  #   app: service-consumer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      service: service-consumer
+      app: service-consumer
+  template:
+    metadata:
+      labels:
+        service: service-consumer
+        app: service-consumer
+      annotations:
+        consul.hashicorp.com/connect-inject: "true"
+        consul.hashicorp.com/connect-service-upstreams: "ticket-a:4000, ticket-b:4001"
+    spec:
+      serviceAccountName: service-consumer
+      containers:
+        - name: service-consumer
+          image: docker.io/darktiger2280/service-consumer:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 4002
+          env:
+          - name: SERVICE_A_HOST
+            value: "localhost"
+          - name: SERVICE_A_PORT
+            value: "4000"
+          - name: API_A_PATH
+            value: "/api/v1/ticket/JAKARTA"
+          - name: SERVICE_B_HOST
+            value: "localhost"
+          - name: SERVICE_B_PORT
+            value: "4001"
+          - name: API_B_PATH
+            value: "/api/v-1/ticket"
+          - name: PORT
+            value: "4002"
